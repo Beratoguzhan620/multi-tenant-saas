@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Helpdesk.slnx
+
+      - name: Build
+        run: dotnet build Helpdesk.slnx --no-restore --configuration Release
+
+      - name: Unit tests
+        run: dotnet test tests/Helpdesk.UnitTests/Helpdesk.UnitTests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      - name: Integration tests (PostgreSQL in Testcontainers)
+        run: dotnet test tests/Helpdesk.IntegrationTests/Helpdesk.IntegrationTests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      - name: Check for model changes without a migration
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.14
+          dotnet ef migrations has-pending-model-changes --project src/Helpdesk.Infrastructure --startup-project src/Helpdesk.Api --no-build --configuration Release
+
+  docker:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Sign up an organization and read it back
+        run: |
+          api=http://localhost:8080
+          session=$(curl -sf $api/api/auth/signup -H 'Content-Type: application/json' -d '{"organizationName":"Kargo Hızlı","slug":"kargo-hizli","displayName":"Ayşe","email":"ayse@example.com","password":"smoke-test-password"}')
+          token=$(echo "$session" | jq -r .accessToken)
+          curl -sf $api/api/organization -H "Authorization: Bearer $token" | jq -e '.slug == "kargo-hizli" and .plan == "Free"' > /dev/null
+          echo "An organization was created and read back through the Compose stack."
+
+      - name: Show logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
