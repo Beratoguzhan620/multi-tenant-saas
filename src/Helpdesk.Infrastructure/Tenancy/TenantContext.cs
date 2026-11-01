@@ -1,6 +1,6 @@
 using Helpdesk.Core.Tenants;
 
-namespace Helpdesk.Api.Features.Auth;
+namespace Helpdesk.Infrastructure.Tenancy;
 
 /// <summary>
 /// The organization and role of the current request, filled in once the membership has been checked against

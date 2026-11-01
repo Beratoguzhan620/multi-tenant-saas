@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace Helpdesk.IntegrationTests;
@@ -11,12 +12,24 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     private readonly PostgreSqlContainer _database = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
-    public string DatabaseConnectionString => _database.GetConnectionString();
+    public const string AppPassword = "app-role-test-password";
+
+    /// <summary>The owner: creates the schema, and bypasses row-level security as a superuser.</summary>
+    public string OwnerConnectionString => _database.GetConnectionString();
+
+    /// <summary>What the API uses: the application role, which row-level security binds.</summary>
+    public string AppConnectionString => new NpgsqlConnectionStringBuilder(OwnerConnectionString)
+    {
+        Username = "helpdesk_app",
+        Password = AppPassword,
+    }.ConnectionString;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        builder.UseSetting("ConnectionStrings:Helpdesk", DatabaseConnectionString);
+        builder.UseSetting("ConnectionStrings:Helpdesk", AppConnectionString);
+        builder.UseSetting("ConnectionStrings:Migrations", OwnerConnectionString);
+        builder.UseSetting("Public:RequestsPerMinute", "100000");
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Jwt:SigningKey", SigningKey);
         builder.UseSetting("Auth:AttemptsPerMinute", "100000");
@@ -25,6 +38,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _database.StartAsync();
+
+        // What a deployment does once (docker-compose runs the same in an init script): the application role
+        // exists and can sign in; the migrations grant it access to the tables.
+        await using var connection = new NpgsqlConnection(OwnerConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand($"CREATE ROLE helpdesk_app LOGIN PASSWORD '{AppPassword}'", connection);
+        await command.ExecuteNonQueryAsync();
         CreateClient().Dispose();
     }
 

@@ -1,4 +1,5 @@
 using Helpdesk.Api.Common;
+using Helpdesk.Infrastructure.Tenancy;
 using Helpdesk.Core.Tenants;
 using Helpdesk.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
