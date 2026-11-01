@@ -33,6 +33,8 @@ services:
       Database__MigrateOnStartup: "true"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:-local-signing-key-change-me-in-the-env-file-0123456789}
       Auth__AttemptsPerMinute: ${AUTH_ATTEMPTS_PER_MINUTE:-10}
+    volumes:
+      - attachments:/data/attachments
     ports:
       - "8080:8080"
     healthcheck:
@@ -43,3 +45,4 @@ services:
 
 volumes:
   db-data:
+  attachments:
