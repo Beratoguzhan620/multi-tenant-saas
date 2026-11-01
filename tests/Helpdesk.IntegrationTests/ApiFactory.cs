@@ -14,6 +14,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public const string AppPassword = "app-role-test-password";
 
+    public string StoragePath { get; } = Path.Combine(Path.GetTempPath(), $"helpdesk-tests-{Guid.NewGuid():N}");
+
     /// <summary>The owner: creates the schema, and bypasses row-level security as a superuser.</summary>
     public string OwnerConnectionString => _database.GetConnectionString();
 
@@ -30,9 +32,19 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Helpdesk", AppConnectionString);
         builder.UseSetting("ConnectionStrings:Migrations", OwnerConnectionString);
         builder.UseSetting("Public:RequestsPerMinute", "100000");
+        builder.UseSetting("Storage:Path", StoragePath);
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Jwt:SigningKey", SigningKey);
         builder.UseSetting("Auth:AttemptsPerMinute", "100000");
+    }
+
+    /// <summary>Runs SQL as the owner, for setting up a state (like a counter near its limit) the API would take long to reach.</summary>
+    public async Task ExecuteAsOwnerAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(OwnerConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task InitializeAsync()
@@ -52,6 +64,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await base.DisposeAsync();
         await _database.DisposeAsync();
+        if (Directory.Exists(StoragePath))
+        {
+            Directory.Delete(StoragePath, recursive: true);
+        }
     }
 }
 
