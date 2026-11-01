@@ -7,7 +7,7 @@ import { useLoad } from "../hooks";
 import type { Plan, PlanId, Usage } from "../types";
 import { Failed, Loading } from "../components/States";
 
-function Meter({ label, used, limit, format = String }: { label: string; used: number; limit: number | null; format?: (n: number) => string }) {
+function Meter({ label, used, limit, format = (n: number) => n.toLocaleString("en") }: { label: string; used: number; limit: number | null; format?: (n: number) => string }) {
   const share = percent(used, limit);
   return (
     <div className="card meter">
