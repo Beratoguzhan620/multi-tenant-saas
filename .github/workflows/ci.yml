@@ -35,6 +35,35 @@ jobs:
           dotnet tool install --global dotnet-ef --version 10.0.14
           dotnet ef migrations has-pending-model-changes --project src/Helpdesk.Infrastructure --startup-project src/Helpdesk.Api --no-build --configuration Release
 
+  web:
+    name: Admin panel
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
   docker:
     name: Docker Compose smoke test
     runs-on: ubuntu-latest
@@ -53,9 +82,60 @@ jobs:
           curl -sf $api/api/organization -H "Authorization: Bearer $token" | jq -e '.slug == "kargo-hizli" and .plan == "Free"' > /dev/null
           echo "An organization was created and read back through the Compose stack."
 
+      - name: The panel is served and the API runs as the row-level-security role
+        run: |
+          curl -sf http://localhost:8080/ | grep -q '<div id="root">'
+          docker compose exec -T db psql -U helpdesk -d helpdesk -tAc \
+            "SELECT count(*) FROM pg_stat_activity WHERE usename = 'helpdesk_app'" | grep -qv '^0$'
+          docker compose exec -T db psql -U helpdesk -d helpdesk -tAc \
+            "SELECT relrowsecurity FROM pg_class WHERE relname = 'tickets'" | grep -q '^t$'
+          echo "nginx serves the panel; the API's connections use helpdesk_app; tickets have row-level security."
+
       - name: Show logs
         if: failure()
         run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
+
+  e2e:
+    name: Support team and customer in browsers
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Start the stack
+        env:
+          AUTH_ATTEMPTS_PER_MINUTE: '1000'
+          PUBLIC_REQUESTS_PER_MINUTE: '1000'
+        run: docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run the walkthrough
+        working-directory: tests/e2e
+        run: node helpdesk.mjs
+
+      - name: Show logs
+        if: failure()
+        run: docker compose logs --no-color api web
+
+      - name: Keep the last screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-output
+          path: tests/e2e/output/
 
       - name: Stop the stack
         if: always()
