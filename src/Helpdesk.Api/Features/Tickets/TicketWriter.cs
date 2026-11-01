@@ -1,6 +1,11 @@
 using System.Security.Cryptography;
+using Helpdesk.Core;
+using Helpdesk.Core.Tenants;
 using Helpdesk.Core.Tickets;
+using Helpdesk.Core.Usage;
 using Helpdesk.Infrastructure.Persistence;
+using Helpdesk.Infrastructure.Usage;
+using Microsoft.EntityFrameworkCore;
 
 namespace Helpdesk.Api.Features.Tickets;
 
@@ -8,8 +13,8 @@ namespace Helpdesk.Api.Features.Tickets;
 internal static class TicketWriter
 {
     /// <summary>
-    /// Takes the next number and stores the ticket with the customer's first message in one transaction: a failed
-    /// insert gives the number back, so numbers have no gaps.
+    /// Counts the ticket against the plan, takes the next number and stores the ticket with the customer's first
+    /// message in one transaction: a failed insert gives the number and the count back, so numbers have no gaps.
     /// </summary>
     public static async Task<(Ticket Ticket, string AccessKey)> OpenAsync(
         HelpdeskDbContext db, Guid tenantId, string subject, string requesterName, string requesterEmail, string message,
@@ -18,6 +23,13 @@ internal static class TicketWriter
         var accessKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var plan = Plan.For(await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Plan).SingleAsync(ct));
+        if (!await UsageCounters.TryAddAsync(db, tenantId, UsageMetric.Tickets, UsageMetric.Month(now), 1, plan.TicketsPerMonth, ct))
+        {
+            throw new DomainException(ErrorCodes.PlanLimitReached,
+                $"This organization has opened its {plan.TicketsPerMonth} tickets for the month on the {plan.Name} plan.");
+        }
+
         var number = await TicketNumbers.NextAsync(db, tenantId, ct);
         var ticket = Ticket.Open(tenantId, number, subject, requesterName, requesterEmail, channel, priority, HashKey(accessKey), now);
         if (assigneeId is not null)

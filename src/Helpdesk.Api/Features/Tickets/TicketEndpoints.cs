@@ -1,6 +1,8 @@
 using Helpdesk.Api.Common;
+using Helpdesk.Api.Features.Audit;
 using Helpdesk.Api.Features.Auth;
 using Helpdesk.Core;
+using Helpdesk.Core.Audit;
 using Helpdesk.Core.Tickets;
 using Helpdesk.Infrastructure.Persistence;
 using Helpdesk.Infrastructure.Tenancy;
@@ -119,6 +121,7 @@ internal static class TicketEndpoints
             ticket.ChangePriority(priority, now);
         }
 
+        var assigneeBefore = ticket.AssigneeId;
         if (request.Unassign == true)
         {
             ticket.Assign(null, now);
@@ -129,9 +132,23 @@ internal static class TicketEndpoints
             ticket.Assign(assigneeId, now);
         }
 
+        if (ticket.AssigneeId != assigneeBefore)
+        {
+            var name = ticket.AssigneeId is { } id
+                ? await db.Users.AsNoTracking().Where(u => u.Id == id).Select(u => u.DisplayName).SingleAsync(ct)
+                : "nobody";
+            await AuditLog.AddAsync(db, tenant, AuditActions.TicketAssigned, $"#{number}", $"to {name}", now, ct);
+        }
+
+        var statusBefore = ticket.Status;
         if (request.Status is { } status)
         {
             ticket.ChangeStatus(status, now);
+        }
+
+        if (ticket.Status != statusBefore)
+        {
+            await AuditLog.AddAsync(db, tenant, AuditActions.TicketStatusChanged, $"#{number}", $"{statusBefore} → {ticket.Status}", now, ct);
         }
 
         await db.SaveChangesAsync(ct);

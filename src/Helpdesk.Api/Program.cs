@@ -3,9 +3,13 @@ using System.Text.Json.Serialization;
 using System.Text.Unicode;
 using System.Threading.RateLimiting;
 using Helpdesk.Api.Common;
+using Helpdesk.Api.Features.Attachments;
+using Helpdesk.Api.Features.Audit;
 using Helpdesk.Api.Features.Auth;
+using Helpdesk.Api.Features.Invitations;
 using Helpdesk.Api.Features.Members;
 using Helpdesk.Api.Features.Organizations;
+using Helpdesk.Api.Features.Plans;
 using Helpdesk.Api.Features.Public;
 using Helpdesk.Api.Features.Tickets;
 using Helpdesk.Api.Logging;
@@ -33,6 +37,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHelpdeskPersistence(connectionString);
+builder.Services.AddHelpdeskStorage(builder.Configuration.GetValue("Storage:Path", "data/attachments")!);
+builder.Services.AddMemoryCache();
 builder.Services.AddHelpdeskAuth(builder.Configuration);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -55,10 +61,18 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(PublicEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = publicPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    options.OnRejected = (context, _) =>
+
+    // Every organization's own budget of requests per minute, by plan.
+    options.GlobalLimiter = TenantRateLimit.Limiter();
+    options.OnRejected = async (context, _) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = "60";
-        return ValueTask.CompletedTask;
+        await TypedResults.Problem(
+            title: "Too many requests",
+            detail: "Slow down and try again in a minute.",
+            statusCode: StatusCodes.Status429TooManyRequests,
+            extensions: new Dictionary<string, object?> { ["code"] = Helpdesk.Core.ErrorCodes.RateLimited })
+            .ExecuteAsync(context.HttpContext);
     };
 });
 
@@ -80,6 +94,7 @@ app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();
+app.UseTenantPlan();
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -104,6 +119,10 @@ app.MapOrganizationEndpoints();
 app.MapMemberEndpoints();
 app.MapTicketEndpoints();
 app.MapPublicEndpoints();
+app.MapPlanEndpoints();
+app.MapInvitationEndpoints();
+app.MapAttachmentEndpoints();
+app.MapAuditEndpoints();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
