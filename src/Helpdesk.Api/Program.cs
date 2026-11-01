@@ -4,12 +4,14 @@ using System.Text.Unicode;
 using System.Threading.RateLimiting;
 using Helpdesk.Api.Common;
 using Helpdesk.Api.Features.Auth;
+using Helpdesk.Api.Features.Members;
 using Helpdesk.Api.Features.Organizations;
+using Helpdesk.Api.Features.Public;
+using Helpdesk.Api.Features.Tickets;
 using Helpdesk.Api.Logging;
 using Helpdesk.Infrastructure;
 using Helpdesk.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
 using Serilog.Core;
@@ -48,6 +50,11 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(AuthEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // The public form per address: enough for a customer, too slow to flood an organization's queue.
+    var publicPerMinute = builder.Configuration.GetValue("Public:RequestsPerMinute", 20);
+    options.AddPolicy(PublicEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = publicPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.OnRejected = (context, _) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = "60";
@@ -94,14 +101,17 @@ app.MapScalarApiReference(options => options
 app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
 app.MapAuthEndpoints();
 app.MapOrganizationEndpoints();
+app.MapMemberEndpoints();
+app.MapTicketEndpoints();
+app.MapPublicEndpoints();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
-    await using var scope = app.Services.CreateAsyncScope();
-    await scope.ServiceProvider.GetRequiredService<HelpdeskDbContext>().Database.MigrateAsync();
+    // Migrations need the owner; the API's own connection is the application role, which row-level security binds.
+    await DependencyInjection.MigrateAsync(app.Services, app.Configuration.GetConnectionString("Migrations"));
 }
 
 await app.RunAsync();
