@@ -124,3 +124,46 @@ public static class Tickets
         return await response.ReadAsync<PublicCreatedDto>();
     }
 }
+
+public sealed record PlanDto(string Id, string Name, int Seats, int? TicketsPerMonth, long StorageBytes, int RequestsPerMinute, int PriceUsd);
+
+public sealed record UsageDto(PlanDto Plan, int Seats, long TicketsThisMonth, long StorageBytes);
+
+public sealed record InvitationDto(Guid Id, string Email, string Role, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, bool Expired);
+
+public sealed record InvitationCreatedDto(InvitationDto Invitation, string Token);
+
+public sealed record InvitationPreviewDto(string OrganizationName, string Email, string Role, bool Expired, bool HasAccount);
+
+public sealed record AttachmentDto(Guid Id, string FileName, string ContentType, long SizeBytes, DateTimeOffset CreatedAt);
+
+public sealed record AuditEventDto(Guid Id, string ActorName, string Action, string Target, string? Details, DateTimeOffset At);
+
+public sealed record AuditPageDto(List<AuditEventDto> Items, Guid? Next);
+
+public static class Teams
+{
+    public static async Task<InvitationCreatedDto> InviteAsync(this Person admin, string email, string role = "Agent")
+    {
+        var response = await admin.Http.PostAsJsonAsync("/api/invitations", new { email, role });
+        response.EnsureSuccessStatusCode();
+        return await response.ReadAsync<InvitationCreatedDto>();
+    }
+
+    /// <summary>Invites a new person and has them join with a new account; returns them signed in to the organization.</summary>
+    public static async Task<Person> AddMemberAsync(this ApiFactory factory, Person admin, string role = "Agent", string name = "Can Öztürk")
+    {
+        var email = $"{TestApi.Unique("member")}@example.com";
+        var invitation = await admin.InviteAsync(email, role);
+        using var anonymous = factory.CreateClient();
+        var response = await anonymous.PostAsJsonAsync("/api/auth/join", new { token = invitation.Token, displayName = name, password = TestApi.Password });
+        response.EnsureSuccessStatusCode();
+        return new Person(factory, await response.ReadAsync<SessionDto>());
+    }
+
+    public static async Task ChangePlanAsync(this Person owner, string plan) =>
+        (await owner.Http.PutAsJsonAsync("/api/organization/plan", new { plan })).EnsureSuccessStatusCode();
+
+    public static async Task<UsageDto> UsageAsync(this Person person) =>
+        (await person.Http.GetFromJsonAsync<UsageDto>("/api/organization/usage", TestApi.Json))!;
+}

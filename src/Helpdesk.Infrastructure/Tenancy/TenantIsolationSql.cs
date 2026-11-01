@@ -36,6 +36,11 @@ public static class TenantIsolationSql
             WITH CHECK (tenant_id = NULLIF(current_setting('{TenantConnectionInterceptor.SettingName}', true), '')::uuid);
         """;
 
+    /// <summary>The audit log is append-only for the application: it can add events, never change or remove them.</summary>
+    public const string AppendOnlyAudit = $"REVOKE UPDATE, DELETE ON audit_events FROM {AppRole};";
+
+    public const string EditableAudit = $"GRANT UPDATE, DELETE ON audit_events TO {AppRole};";
+
     public static string Disable(string table) => $"""
         DROP POLICY IF EXISTS tenant_isolation ON {table};
         ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;

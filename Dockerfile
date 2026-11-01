@@ -13,6 +13,10 @@ EXPOSE 8080
 
 COPY --from=build /app/publish .
 
+# Attachments; mount a volume here so they outlive the container.
+RUN mkdir -p /data/attachments && chown "$APP_UID" /data/attachments
+ENV Storage__Path=/data/attachments
+
 USER $APP_UID
 
 ENTRYPOINT ["dotnet", "Helpdesk.Api.dll"]

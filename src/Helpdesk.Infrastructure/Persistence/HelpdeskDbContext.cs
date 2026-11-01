@@ -1,7 +1,9 @@
+using Helpdesk.Core.Audit;
 using Helpdesk.Core.Tenants;
 using Helpdesk.Core.Tickets;
 using Helpdesk.Core.Users;
 using Helpdesk.Infrastructure.Tenancy;
+using Helpdesk.Infrastructure.Usage;
 using Microsoft.EntityFrameworkCore;
 
 namespace Helpdesk.Infrastructure.Persistence;
@@ -22,6 +24,14 @@ public sealed class HelpdeskDbContext(DbContextOptions<HelpdeskDbContext> option
 
     public DbSet<Comment> Comments => Set<Comment>();
 
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
+    public DbSet<UsageCounter> UsageCounters => Set<UsageCounter>();
+
     /// <summary>The organization the filters use; read per query, so it may be set after the context was created.</summary>
     internal Guid? CurrentTenantId => tenant.TenantId;
 
@@ -30,5 +40,9 @@ public sealed class HelpdeskDbContext(DbContextOptions<HelpdeskDbContext> option
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(HelpdeskDbContext).Assembly);
         modelBuilder.Entity<Ticket>().HasQueryFilter(t => t.TenantId == CurrentTenantId);
         modelBuilder.Entity<Comment>().HasQueryFilter(c => c.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Attachment>().HasQueryFilter(a => a.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Invitation>().HasQueryFilter(i => i.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AuditEvent>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<UsageCounter>().HasQueryFilter(c => c.TenantId == CurrentTenantId);
     }
 }

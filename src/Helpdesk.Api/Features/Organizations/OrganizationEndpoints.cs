@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using Helpdesk.Api.Common;
 using Helpdesk.Infrastructure.Tenancy;
+using Helpdesk.Api.Features.Audit;
 using Helpdesk.Api.Features.Auth;
 using Helpdesk.Core;
+using Helpdesk.Core.Audit;
 using Helpdesk.Core.Tenants;
 using Helpdesk.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -56,10 +58,16 @@ internal static class OrganizationEndpoints
         TypedResults.Ok(OrganizationResponse.From(await Load(db, tenant, ct)));
 
     private static async Task<Ok<OrganizationResponse>> Rename(
-        RenameOrganizationRequest request, TenantContext tenant, HelpdeskDbContext db, CancellationToken ct)
+        RenameOrganizationRequest request, TenantContext tenant, HelpdeskDbContext db, TimeProvider clock, CancellationToken ct)
     {
         var organization = await Load(db, tenant, ct);
+        var before = organization.Name;
         organization.Rename(request.Name);
+        if (organization.Name != before)
+        {
+            await AuditLog.AddAsync(db, tenant, AuditActions.OrganizationRenamed, organization.Name, $"was {before}", clock.GetUtcNow(), ct);
+        }
+
         await db.SaveChangesAsync(ct);
         return TypedResults.Ok(OrganizationResponse.From(organization));
     }
