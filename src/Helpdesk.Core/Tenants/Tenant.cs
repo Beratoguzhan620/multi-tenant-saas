@@ -26,6 +26,14 @@ public sealed partial class Tenant
 
     public DateTimeOffset PlanChangedAt { get; private set; }
 
+    /// <summary>
+    /// The number of the newest ticket. Taken with one atomic <c>UPDATE … RETURNING</c> in the database, so two
+    /// tickets opened at the same moment never share a number. The first ticket is #1001.
+    /// </summary>
+    public long LastTicketNumber { get; private set; } = FirstTicketNumber - 1;
+
+    public const long FirstTicketNumber = 1001;
+
     /// <summary>A new organization starts on the free plan with the person who created it as its owner.</summary>
     public static (Tenant Tenant, Membership Owner) Create(string name, string slug, Guid ownerId, DateTimeOffset now)
     {
