@@ -1,0 +1,11 @@
+{
+  "name": "helpdesk-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "helpdesk": "node helpdesk.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.55.0"
+  }
+}
