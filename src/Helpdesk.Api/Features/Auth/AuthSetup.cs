@@ -23,7 +23,6 @@ internal static class AuthSetup
         services.AddSingleton<SigningKeyProvider>();
         services.AddSingleton<TokenService>();
         services.AddSingleton<PasswordVerifier>();
-        services.AddScoped<TenantContext>();
         services.AddScoped<IAuthorizationHandler, MembershipHandler>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();

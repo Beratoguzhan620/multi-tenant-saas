@@ -10,6 +10,6 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Hel
     {
         var options = new DbContextOptionsBuilder<HelpdeskDbContext>();
         DependencyInjection.ConfigureDbContext(options, "Host=localhost;Database=helpdesk_design");
-        return new HelpdeskDbContext(options.Options);
+        return new HelpdeskDbContext(options.Options, new Tenancy.TenantContext());
     }
 }

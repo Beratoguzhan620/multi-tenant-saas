@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Helpdesk.Api.Common;
+using Helpdesk.Infrastructure.Tenancy;
 using Helpdesk.Api.Features.Auth;
 using Helpdesk.Core;
 using Helpdesk.Core.Tenants;
