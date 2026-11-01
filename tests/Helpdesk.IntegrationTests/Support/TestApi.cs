@@ -78,3 +78,49 @@ public static class TestApi
         return doc.RootElement.TryGetProperty("code", out var code) ? code.GetString() : null;
     }
 }
+
+public sealed record PersonRefDto(Guid Id, string Name);
+
+public sealed record TicketDto(
+    long Number, string Subject, string Status, string Priority, string Channel,
+    string RequesterName, string RequesterEmail, PersonRefDto? Assignee, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+public sealed record TicketPageDto(List<TicketDto> Items, int Total, int Page, int PageSize);
+
+public sealed record CommentDto(Guid Id, string AuthorName, bool ByTeam, bool IsInternal, string Body, DateTimeOffset CreatedAt);
+
+public sealed record PublicCreatedDto(long Number, string AccessKey);
+
+public sealed record PublicTicketDto(long Number, string Subject, string Status, DateTimeOffset CreatedAt, List<CommentDto> Messages);
+
+public sealed record MemberDto(Guid Id, string DisplayName, string Email, string Role, DateTimeOffset JoinedAt);
+
+public static class Tickets
+{
+    public static async Task<TicketDto> OpenTicketAsync(this Person person, string subject = "Kargom gelmedi", string email = "musteri@example.com")
+    {
+        var response = await person.Http.PostAsJsonAsync("/api/tickets", new
+        {
+            subject,
+            requesterName = "Mehmet Kaya",
+            requesterEmail = email,
+            message = "Siparişim üç gündür yolda görünüyor.",
+        });
+        response.EnsureSuccessStatusCode();
+        return await response.ReadAsync<TicketDto>();
+    }
+
+    public static async Task<PublicCreatedDto> OpenPublicTicketAsync(this ApiFactory factory, string slug, string subject = "Fatura sorusu")
+    {
+        using var anonymous = factory.CreateClient();
+        var response = await anonymous.PostAsJsonAsync($"/api/public/{slug}/tickets", new
+        {
+            name = "Zeynep Demir",
+            email = "zeynep@example.com",
+            subject,
+            message = "Geçen ayın faturası iki kez kesilmiş.",
+        });
+        response.EnsureSuccessStatusCode();
+        return await response.ReadAsync<PublicCreatedDto>();
+    }
+}
