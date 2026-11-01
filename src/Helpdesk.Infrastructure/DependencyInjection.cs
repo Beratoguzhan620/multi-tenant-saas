@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Helpdesk.Infrastructure.Persistence;
+using Helpdesk.Infrastructure.Storage;
 using Helpdesk.Infrastructure.Tenancy;
 
 namespace Helpdesk.Infrastructure;
@@ -18,6 +19,10 @@ public static class DependencyInjection
         });
         return services;
     }
+
+    /// <summary>Attachments on a local disk or volume under <paramref name="root"/>.</summary>
+    public static IServiceCollection AddHelpdeskStorage(this IServiceCollection services, string root) =>
+        services.AddSingleton<IFileStore>(new LocalFileStore(root));
 
     /// <summary>
     /// Applies migrations as the database owner. The API itself connects as the application role, which is subject
