@@ -9,8 +9,10 @@ services:
       POSTGRES_DB: helpdesk
       POSTGRES_USER: helpdesk
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk-local}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-helpdesk-app-local}
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk"]
       interval: 5s
@@ -25,7 +27,9 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__Helpdesk: "Host=db;Database=helpdesk;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk-local}"
+      # The API works as helpdesk_app, bound by row-level security; only migrations use the owner.
+      ConnectionStrings__Helpdesk: "Host=db;Database=helpdesk;Username=helpdesk_app;Password=${APP_DB_PASSWORD:-helpdesk-app-local}"
+      ConnectionStrings__Migrations: "Host=db;Database=helpdesk;Username=helpdesk;Password=${POSTGRES_PASSWORD:-helpdesk-local}"
       Database__MigrateOnStartup: "true"
       Jwt__SigningKey: ${JWT_SIGNING_KEY:-local-signing-key-change-me-in-the-env-file-0123456789}
       Auth__AttemptsPerMinute: ${AUTH_ATTEMPTS_PER_MINUTE:-10}
