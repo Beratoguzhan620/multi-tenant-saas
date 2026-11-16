@@ -1,0 +1,29 @@
+# The public demo on Render's free plan: one web service from deploy/demo/Dockerfile, with the database on Neon.
+# Render asks for the owner's connection string once. The API signs in as the application role, which the
+# migrations create and which row-level security binds; its password is generated here and never leaves Render.
+services:
+  - type: web
+    name: helpdesk-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./deploy/demo/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ConnectionStrings__Migrations
+        sync: false
+      - key: Database__AppRolePassword
+        generateValue: true
+      - key: Database__MigrateOnStartup
+        value: "true"
+      - key: Jwt__SigningKey
+        generateValue: true
+      # A free service has no lasting disk: attachments last until it next sleeps or redeploys.
+      - key: Storage__Path
+        value: /tmp/attachments
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: PORT
+        value: "8080"

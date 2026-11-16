@@ -28,7 +28,16 @@ builder.Services.AddSerilog((services, logger) => logger
     .ReadFrom.Services(services)
     .Enrich.FromLogContext());
 
-var connectionString = builder.Configuration.GetConnectionString("Helpdesk");
+// A hosted database hands out one owner connection (often as a postgres:// URL). The public demo gives only that,
+// plus a generated password for the application role; the API then signs in as the role on the same database.
+var ownerConnectionString = ConnectionStrings.FromUrl(builder.Configuration.GetConnectionString("Migrations"));
+var appRolePassword = builder.Configuration["Database:AppRolePassword"];
+var connectionString = ConnectionStrings.FromUrl(builder.Configuration.GetConnectionString("Helpdesk"));
+if (string.IsNullOrWhiteSpace(connectionString) && !string.IsNullOrWhiteSpace(ownerConnectionString) && !string.IsNullOrEmpty(appRolePassword))
+{
+    connectionString = DependencyInjection.AppRoleConnectionString(ownerConnectionString, appRolePassword);
+}
+
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException(
@@ -89,7 +98,22 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// One container for the public demo: the built web app is copied into wwwroot and served from here, with the same
+// headers nginx sets in Compose. Without a wwwroot (tests, Compose), nothing changes.
+var indexPage = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "index.html");
+var serveWeb = File.Exists(indexPage);
 app.UseMiddleware<CorrelationIdMiddleware>();
+if (serveWeb)
+{
+    app.UseMiddleware<WebHeadersMiddleware>();
+    app.UseDefaultFiles();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = context => context.Context.Response.Headers.CacheControl =
+            context.Context.Request.Path.StartsWithSegments("/assets") ? "public, max-age=31536000, immutable" : "no-cache",
+    });
+}
+
 app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -113,7 +137,10 @@ app.MapScalarApiReference(options => options
     .DisableMcp()
     .DisableTelemetry());
 
-app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
+if (!serveWeb)
+{
+    app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
+}
 app.MapAuthEndpoints();
 app.MapOrganizationEndpoints();
 app.MapMemberEndpoints();
@@ -126,11 +153,27 @@ app.MapAuditEndpoints();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+if (serveWeb)
+{
+    // Every other path is a page of the web app; unknown API paths stay 404s.
+    app.MapFallback(async context =>
+    {
+        if (WebHeadersMiddleware.IsApi(context.Request.Path))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        context.Response.Headers.CacheControl = "no-cache";
+        await context.Response.SendFileAsync(indexPage, context.RequestAborted);
+    });
+}
 
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
     // Migrations need the owner; the API's own connection is the application role, which row-level security binds.
-    await DependencyInjection.MigrateAsync(app.Services, app.Configuration.GetConnectionString("Migrations"));
+    await DependencyInjection.MigrateAsync(app.Services, ownerConnectionString, appRolePassword);
 }
 
 await app.RunAsync();
