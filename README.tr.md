@@ -14,6 +14,8 @@ Birçok şirketin ortak kullandığı, ama her birinin kendi duvarları içinde 
 
 ## Deneyin
 
+**Canlı demo:** [helpdesk-demo-4q7z.onrender.com](https://helpdesk-demo-4q7z.onrender.com). Bir organizasyon oluştur ve kiracıların ayrı tutulduğunu görmek için kendini başka bir adresle davet et. Ekler, servis bir sonraki uykusuna kadar durur. Ücretsiz bir sunucuda, veritabanı Neon'da çalışıyor: bir süre kimse açmadıysa ilk açılış bir dakika kadar sürebilir.
+
 ```bash
 docker compose up --build
 ```
