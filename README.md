@@ -14,6 +14,8 @@ A support ticket system that many companies share, each in its own walled garden
 
 ## Try it
 
+**Live demo:** [helpdesk-demo-4q7z.onrender.com](https://helpdesk-demo-4q7z.onrender.com). Create an organization and invite yourself under another address to see the tenants kept apart. Attachments last until the service next sleeps. It runs on a free server with the database on Neon: after a quiet spell the first visit can take about a minute.
+
 ```bash
 docker compose up --build
 ```
